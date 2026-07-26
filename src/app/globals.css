@@ -1,0 +1,162 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+:root {
+  --background: #090D16;
+  --foreground: #F3F4F6;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Glassmorphism card effects */
+.glass-panel {
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+}
+
+.glass-input {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: all 0.2s ease-in-out;
+}
+
+.glass-input:focus {
+  background: rgba(15, 23, 42, 0.95);
+  border-color: rgba(99, 102, 241, 0.8);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+  outline: none;
+}
+
+/* Custom modern scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B0F19;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1F2937;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+/* Glowing text and badges */
+.glow-text {
+  text-shadow: 0 0 16px rgba(99, 102, 241, 0.8);
+}
+
+.glow-cyan {
+  text-shadow: 0 0 16px rgba(6, 182, 212, 0.8);
+}
+
+/* Cyber Grid Background */
+.cyber-grid {
+  background-size: 50px 50px;
+  background-image: 
+    linear-gradient(to right, rgba(99, 102, 241, 0.09) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(99, 102, 241, 0.09) 1px, transparent 1px);
+  animation: gridMove 15s linear infinite;
+}
+
+@keyframes gridMove {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 50px 50px;
+  }
+}
+
+/* Floating Nebulae Blobs */
+.animate-blob-1 {
+  animation: blobFloat1 10s infinite alternate ease-in-out;
+}
+
+.animate-blob-2 {
+  animation: blobFloat2 12s infinite alternate ease-in-out;
+}
+
+.animate-blob-3 {
+  animation: blobFloat3 8s infinite alternate ease-in-out;
+}
+
+@keyframes blobFloat1 {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  50% {
+    transform: translate(80px, -60px) scale(1.2);
+  }
+  100% {
+    transform: translate(-50px, 70px) scale(0.9);
+  }
+}
+
+@keyframes blobFloat2 {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  50% {
+    transform: translate(-90px, 60px) scale(1.25);
+  }
+  100% {
+    transform: translate(60px, -40px) scale(0.9);
+  }
+}
+
+@keyframes blobFloat3 {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  50% {
+    transform: translate(60px, 80px) scale(1.15);
+  }
+  100% {
+    transform: translate(-70px, -50px) scale(0.85);
+  }
+}
+
+/* Pulsing Cyber Ring */
+.cyber-pulse-ring {
+  animation: pulseRing 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulseRing {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+/* Animated Card Border Light Beam */
+.animate-spin-border {
+  animation: spinBorder 4s linear infinite;
+}
+
+@keyframes spinBorder {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

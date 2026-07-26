@@ -384,20 +384,38 @@ export default function Home() {
   // Check single account against API
   const checkSingleAccount = async (account: AccountItem): Promise<AccountItem> => {
     try {
-      const res = await fetch("https://tools.dongvanfb.net/api/get_messages_oauth2", {
-        method: "POST",
-        headers: { 
-          "accept": "*/*",
-          "content-type": "application/json",
-          "Referer": "https://dongvanfb.net/"
-        },
-        body: JSON.stringify({
-          email: account.email,
-          pass: account.pass,
-          refresh_token: account.refresh_token,
-          client_id: account.client_id,
-        }),
-      });
+      // Use relative API path (proxied by Firebase Hosting to eliminate CORS) or fallback to direct URL
+      let res: Response;
+      try {
+        res = await fetch("/api/get_messages_oauth2", {
+          method: "POST",
+          headers: { 
+            "accept": "*/*",
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            email: account.email,
+            pass: account.pass,
+            refresh_token: account.refresh_token,
+            client_id: account.client_id,
+          }),
+        });
+      } catch (e) {
+        res = await fetch("https://tools.dongvanfb.net/api/get_messages_oauth2", {
+          method: "POST",
+          headers: { 
+            "accept": "*/*",
+            "content-type": "application/json",
+            "Referer": "https://dongvanfb.net/"
+          },
+          body: JSON.stringify({
+            email: account.email,
+            pass: account.pass,
+            refresh_token: account.refresh_token,
+            client_id: account.client_id,
+          }),
+        });
+      }
 
       const mailData = await res.json();
       const cat = categorizeResponse(mailData);
@@ -451,7 +469,7 @@ export default function Home() {
         ...account,
         status: "LOGIN_ERROR",
         statusMessage: "Lỗi kết nối!",
-        rawResponseContent: "Lỗi kết nối!",
+        rawResponseContent: err.message || "Connection Error",
       };
     }
   };

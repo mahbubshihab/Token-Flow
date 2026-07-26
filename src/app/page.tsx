@@ -384,12 +384,11 @@ export default function Home() {
   // Check single account against API
   const checkSingleAccount = async (account: AccountItem): Promise<AccountItem> => {
     try {
-      const res = await fetch("https://tools.dongvanfb.net/api/get_messages_oauth2", {
+      const res = await fetch("/api/get_messages_oauth2", {
         method: "POST",
         headers: { 
           "accept": "*/*",
-          "content-type": "application/json",
-          "Referer": "https://dongvanfb.net/"
+          "content-type": "application/json"
         },
         body: JSON.stringify({
           email: account.email,

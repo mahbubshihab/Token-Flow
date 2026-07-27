@@ -421,6 +421,36 @@ export default function Home() {
     return false;
   };
 
+  // Helper to check if a message belongs to Amazon
+  const isAmazonMessage = (msg: MailMessageItem): boolean => {
+    if (!msg) return false;
+    const from = (msg.from || "").toLowerCase();
+    const subject = (msg.subject || "").toLowerCase();
+    const body = (msg.message || "").toLowerCase();
+
+    if (
+      from.includes("amazon") ||
+      from.includes("audible") ||
+      from.includes("seller-appeal") ||
+      from.includes("merchant-approval") ||
+      from.includes("account-update")
+    ) {
+      return true;
+    }
+
+    if (
+      subject.includes("amazon") ||
+      body.includes("amazon") ||
+      subject.includes("cuenta de amazon") ||
+      subject.includes("compte amazon") ||
+      subject.includes("amazon-konto")
+    ) {
+      return true;
+    }
+
+    return false;
+  };
+
   // Categorize Dongvanfb API Response into 4 main statuses
   const categorizeResponse = (resData: any): { status: AccountStatus; message: string } => {
     if (!resData) {
@@ -489,12 +519,17 @@ export default function Home() {
 
       const mailData = await res.json();
 
-      // Extract messages array & preserve exact raw API response text content
-      const messagesList: MailMessageItem[] = Array.isArray(mailData?.messages)
+      // Extract raw messages array & prioritize Amazon emails at top
+      let rawMessagesList: MailMessageItem[] = Array.isArray(mailData?.messages)
         ? mailData.messages
         : Array.isArray(mailData)
         ? mailData
         : [];
+
+      // Hoist Amazon-related messages to the VERY TOP of the list
+      const amazonMsgs = rawMessagesList.filter((m) => isAmazonMessage(m));
+      const otherMsgs = rawMessagesList.filter((m) => !isAmazonMessage(m));
+      const messagesList = [...amazonMsgs, ...otherMsgs];
 
       let topOtpCode = mailData?.code;
       if (!topOtpCode && messagesList.length > 0) {
@@ -511,7 +546,7 @@ export default function Home() {
         }
       }
 
-      // Preserve EXACT raw content string from API response (prioritize primary inbox message subject/content over generic status)
+      // Preserve EXACT raw content string from Amazon message if available
       const exactApiContent =
         (messagesList.length > 0 ? messagesList[0].subject || messagesList[0].message : undefined) ||
         mailData?.content ||

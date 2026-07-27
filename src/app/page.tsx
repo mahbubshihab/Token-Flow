@@ -32,7 +32,7 @@ import * as XLSX from "xlsx";
 import { onAuthStateChanged, signInWithPopup, signOut, User } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
 
-type AccountStatus = "idle" | "processing" | "LIVE" | "DEAD" | "NOT_EXIST" | "LOGIN_ERROR";
+type AccountStatus = "idle" | "processing" | "LIVE" | "SUSPENDED" | "ERROR" | "NOT_EXIST";
 
 interface MailMessageItem {
   uid?: number;
@@ -165,7 +165,7 @@ export default function Home() {
   const [inputText, setInputText] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
-  const [activeTab, setActiveTab] = useState<"ALL" | "LIVE" | "DEAD" | "NOT_EXIST" | "LOGIN_ERROR" | "HAS_OTP">("ALL");
+  const [activeTab, setActiveTab] = useState<"ALL" | "LIVE" | "SUSPENDED" | "ERROR" | "NOT_EXIST" | "HAS_OTP">("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedRawItem, setSelectedRawItem] = useState<AccountItem | null>(null);
@@ -336,54 +336,131 @@ export default function Home() {
     return codeMatch ? codeMatch[0] : undefined;
   };
 
-  // Categorize Dongvanfb API Response
+  // Comprehensive Multi-lingual Amazon Suspension Checker
+  const isSuspendedMessage = (strText: string, fromEmail = ""): boolean => {
+    if (!strText && !fromEmail) return false;
+    const text = strText.toLowerCase();
+    const from = fromEmail.toLowerCase();
+
+    // Specific Amazon Suspension Senders
+    if (
+      from.includes("appeal@amazon") ||
+      from.includes("seller-appeal") ||
+      from.includes("merchant-approval") ||
+      from.includes("account-appeal")
+    ) {
+      return true;
+    }
+
+    // English
+    if (
+      text.includes("account is suspended") ||
+      text.includes("account has been suspended") ||
+      text.includes("account is on hold") ||
+      text.includes("temporarily on hold") ||
+      text.includes("account has been locked") ||
+      text.includes("action required: your amazon account")
+    ) {
+      return true;
+    }
+
+    // Spanish
+    if (
+      text.includes("retenida temporalmente") ||
+      text.includes("cuenta suspendida") ||
+      text.includes("su cuenta de amazon está retenida") ||
+      text.includes("cuenta ha sido suspendida") ||
+      text.includes("retendida")
+    ) {
+      return true;
+    }
+
+    // Vietnamese
+    if (
+      text.includes("bị tạm khóa") ||
+      text.includes("bị đình chỉ") ||
+      text.includes("tài khoản amazon của bạn bị")
+    ) {
+      return true;
+    }
+
+    // German
+    if (
+      text.includes("vorübergehend gesperrt") ||
+      text.includes("konto wurde gesperrt") ||
+      text.includes("konto ist gesperrt")
+    ) {
+      return true;
+    }
+
+    // French
+    if (
+      text.includes("est temporairement suspendu") ||
+      text.includes("compte a été suspendu") ||
+      text.includes("votre compte amazon est")
+    ) {
+      return true;
+    }
+
+    // Italian
+    if (
+      text.includes("temporaneamente sospeso") ||
+      text.includes("account è stato sospeso")
+    ) {
+      return true;
+    }
+
+    // Portuguese
+    if (
+      text.includes("temporariamente suspensa") ||
+      text.includes("sua conta da amazon foi suspensa")
+    ) {
+      return true;
+    }
+
+    return false;
+  };
+
+  // Categorize Dongvanfb API Response into 4 main statuses
   const categorizeResponse = (resData: any): { status: AccountStatus; message: string } => {
     if (!resData) {
-      return { status: "LOGIN_ERROR", message: "Lỗi kết nối!" };
+      return { status: "ERROR", message: "Lỗi kết nối!" };
     }
 
     const strRes = JSON.stringify(resData).toLowerCase();
 
-    // LIVE: Successful response with messages array or status true
-    if (resData.status === true || Array.isArray(resData.messages) || (resData.messages && resData.messages.length > 0) || resData.code) {
-      return { status: "LIVE", message: resData.content || "Account Live & Inbox Active" };
-    }
-
-    // DEAD: Suspended / Blocked / Locked
+    // ERROR: Connection Fail / Timeout / Proxy Fail / 500
     if (
-      strRes.includes("lock") ||
-      strRes.includes("suspend") ||
-      strRes.includes("block") ||
-      strRes.includes("disabled") ||
-      strRes.includes("verify")
+      strRes.includes("lỗi kết nối") ||
+      strRes.includes("proxy connection error") ||
+      strRes.includes("timeout") ||
+      strRes.includes("err_failed") ||
+      strRes.includes("500") ||
+      strRes.includes("server error")
     ) {
-      return { status: "DEAD", message: resData.content || "Account Locked / Suspended" };
+      return { status: "ERROR", message: resData.content || resData.error || "Lỗi kết nối!" };
     }
 
-    // NOT EXIST: Non-existent account
+    // NOT_EXIST: Password Incorrect / IMAP Fail / Account Not Exist
     if (
       strRes.includes("not exist") ||
       strRes.includes("not found") ||
       strRes.includes("no account") ||
-      strRes.includes("create")
-    ) {
-      return { status: "NOT_EXIST", message: resData.content || "Account Does Not Exist" };
-    }
-
-    // LOGIN ERROR: Invalid token / Wrong Password / Lỗi kết nối
-    if (
-      strRes.includes("lỗi kết nối") ||
       strRes.includes("invalid") ||
       strRes.includes("expired") ||
-      strRes.includes("token") ||
       strRes.includes("password") ||
-      strRes.includes("auth") ||
+      strRes.includes("imap connection failed") ||
       resData.status === false
     ) {
-      return { status: "LOGIN_ERROR", message: resData.content || resData.error || "Lỗi kết nối!" };
+      return { status: "NOT_EXIST", message: resData.content || resData.error || "Account Not Exist / Login Fail" };
     }
 
-    return { status: "LOGIN_ERROR", message: resData.content || "Lỗi kết nối!" };
+    // Default LIVE if IMAP active
+    if (resData.status === true || Array.isArray(resData.messages) || (resData.messages && resData.messages.length > 0) || resData.code) {
+      return { status: "LIVE", message: resData.content || "Account Live & Inbox Active" };
+    }
+
+    return { status: "ERROR", message: resData.content || "Lỗi kết nối!" };
   };
 
   // Check single account against API
@@ -428,16 +505,6 @@ export default function Home() {
       const mailData = await res.json();
       const cat = categorizeResponse(mailData);
 
-      if (!res.ok || cat.status === "LOGIN_ERROR" || cat.status === "DEAD" || cat.status === "NOT_EXIST") {
-        return {
-          ...account,
-          status: cat.status,
-          statusMessage: cat.message,
-          rawResponseContent: mailData?.content || mailData?.error || mailData?.message || cat.message,
-          rawResponse: mailData,
-        };
-      }
-
       // Extract messages array & preserve exact raw API response text content
       const messagesList: MailMessageItem[] = Array.isArray(mailData?.messages)
         ? mailData.messages
@@ -458,6 +525,39 @@ export default function Home() {
             break;
           }
         }
+      }
+
+      // Check if ANY inbox message or content indicates account suspension/hold
+      let hasSuspension = isSuspendedMessage(mailData?.content || "");
+      if (!hasSuspension && messagesList.length > 0) {
+        for (const msg of messagesList) {
+          if (isSuspendedMessage((msg.subject || "") + " " + (msg.message || ""), msg.from || "")) {
+            hasSuspension = true;
+            break;
+          }
+        }
+      }
+
+      if (hasSuspension) {
+        return {
+          ...account,
+          status: "SUSPENDED",
+          statusMessage: "Amazon Account Suspended / On Hold",
+          rawResponseContent: mailData?.content || (messagesList.length > 0 ? messagesList[0].subject : "Account Suspended"),
+          messagesList: messagesList,
+          otpCode: topOtpCode,
+          rawResponse: mailData,
+        };
+      }
+
+      if (!res.ok || cat.status === "ERROR" || cat.status === "NOT_EXIST") {
+        return {
+          ...account,
+          status: cat.status,
+          statusMessage: cat.message,
+          rawResponseContent: mailData?.content || mailData?.error || mailData?.message || cat.message,
+          rawResponse: mailData,
+        };
       }
 
       const rawText = mailData?.content || (messagesList.length > 0 ? messagesList[0].subject : JSON.stringify(mailData));
@@ -483,7 +583,7 @@ export default function Home() {
       }
       return {
         ...account,
-        status: "LOGIN_ERROR",
+        status: "ERROR",
         statusMessage: "Lỗi kết nối!",
         rawResponseContent: err?.message || "Lỗi kết nối!",
       };
@@ -586,14 +686,14 @@ export default function Home() {
   const total = accounts.length;
   const processed = accounts.filter((a) => a.status !== "idle" && a.status !== "processing").length;
   const liveCount = accounts.filter((a) => a.status === "LIVE").length;
-  const deadCount = accounts.filter((a) => a.status === "DEAD").length;
+  const suspendedCount = accounts.filter((a) => a.status === "SUSPENDED").length;
+  const errorCount = accounts.filter((a) => a.status === "ERROR").length;
   const notExistCount = accounts.filter((a) => a.status === "NOT_EXIST").length;
-  const loginErrorCount = accounts.filter((a) => a.status === "LOGIN_ERROR").length;
   const otpCount = accounts.filter((a) => Boolean(a.otpCode)).length;
 
   const progressPercent = total > 0 ? Math.round((processed / total) * 100) : 0;
 
-  // Category Download Buttons Configuration
+  // Category Download Buttons Configuration (4 Main Categories)
   const categoryDownloadButtons = [
     {
       key: "LIVE" as const,
@@ -602,21 +702,21 @@ export default function Home() {
       activeClass: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-emerald-500/10",
     },
     {
-      key: "DEAD" as const,
-      label: `Download DEAD Excel (${deadCount})`,
-      count: deadCount,
+      key: "SUSPENDED" as const,
+      label: `Download SUSPENDED Excel (${suspendedCount})`,
+      count: suspendedCount,
+      activeClass: "bg-purple-500/10 text-purple-400 border-purple-500/30 hover:bg-purple-500/20 shadow-purple-500/10",
+    },
+    {
+      key: "ERROR" as const,
+      label: `Download ERROR Excel (${errorCount})`,
+      count: errorCount,
       activeClass: "bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20 shadow-rose-500/10",
     },
     {
       key: "NOT_EXIST" as const,
       label: `Download NOT EXIST Excel (${notExistCount})`,
       count: notExistCount,
-      activeClass: "bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700",
-    },
-    {
-      key: "LOGIN_ERROR" as const,
-      label: `Download LOGIN ERROR Excel (${loginErrorCount})`,
-      count: loginErrorCount,
       activeClass: "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20 shadow-amber-500/10",
     },
   ];
@@ -992,7 +1092,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Categorization Stat Grid */}
+              {/* Categorization Stat Grid (4 Main Categories) */}
               <div className="mt-4 grid grid-cols-2 gap-2.5">
                 <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-2.5 sm:p-3">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
@@ -1002,28 +1102,28 @@ export default function Home() {
                   <div className="mt-1 font-mono text-lg sm:text-xl font-bold text-emerald-400">{liveCount}</div>
                 </div>
 
-                <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-2.5 sm:p-3">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-400">
+                <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-2.5 sm:p-3">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-purple-400">
                     <Lock className="h-3.5 w-3.5" />
-                    DEAD
+                    SUSPENDED
                   </div>
-                  <div className="mt-1 font-mono text-lg sm:text-xl font-bold text-rose-400">{deadCount}</div>
+                  <div className="mt-1 font-mono text-lg sm:text-xl font-bold text-purple-400">{suspendedCount}</div>
                 </div>
 
-                <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-2.5 sm:p-3">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
-                    <UserX className="h-3.5 w-3.5" />
-                    NOT EXIST
+                <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-2.5 sm:p-3">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-400">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    ERROR
                   </div>
-                  <div className="mt-1 font-mono text-lg sm:text-xl font-bold text-slate-300">{notExistCount}</div>
+                  <div className="mt-1 font-mono text-lg sm:text-xl font-bold text-rose-400">{errorCount}</div>
                 </div>
 
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 sm:p-3">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-400">
-                    <KeyRound className="h-3.5 w-3.5" />
-                    LOGIN ERROR
+                    <UserX className="h-3.5 w-3.5" />
+                    NOT EXIST
                   </div>
-                  <div className="mt-1 font-mono text-lg sm:text-xl font-bold text-amber-400">{loginErrorCount}</div>
+                  <div className="mt-1 font-mono text-lg sm:text-xl font-bold text-amber-400">{notExistCount}</div>
                 </div>
               </div>
             </div>
@@ -1093,34 +1193,34 @@ export default function Home() {
                 LIVE ({liveCount})
               </button>
               <button
-                onClick={() => setActiveTab("DEAD")}
+                onClick={() => setActiveTab("SUSPENDED")}
                 className={`rounded-lg px-2.5 sm:px-3 py-1.5 text-xs font-semibold transition-all ${
-                  activeTab === "DEAD"
+                  activeTab === "SUSPENDED"
+                    ? "bg-purple-600 text-white shadow-lg shadow-purple-500/30"
+                    : "bg-slate-900 text-purple-400 hover:bg-slate-800"
+                }`}
+              >
+                SUSPENDED ({suspendedCount})
+              </button>
+              <button
+                onClick={() => setActiveTab("ERROR")}
+                className={`rounded-lg px-2.5 sm:px-3 py-1.5 text-xs font-semibold transition-all ${
+                  activeTab === "ERROR"
                     ? "bg-rose-600 text-white shadow-lg shadow-rose-500/30"
                     : "bg-slate-900 text-rose-400 hover:bg-slate-800"
                 }`}
               >
-                DEAD ({deadCount})
+                ERROR ({errorCount})
               </button>
               <button
                 onClick={() => setActiveTab("NOT_EXIST")}
                 className={`rounded-lg px-2.5 sm:px-3 py-1.5 text-xs font-semibold transition-all ${
                   activeTab === "NOT_EXIST"
-                    ? "bg-slate-600 text-white shadow-lg shadow-slate-500/30"
-                    : "bg-slate-900 text-slate-400 hover:bg-slate-800"
-                }`}
-              >
-                NOT EXIST ({notExistCount})
-              </button>
-              <button
-                onClick={() => setActiveTab("LOGIN_ERROR")}
-                className={`rounded-lg px-2.5 sm:px-3 py-1.5 text-xs font-semibold transition-all ${
-                  activeTab === "LOGIN_ERROR"
                     ? "bg-amber-600 text-white shadow-lg shadow-amber-500/30"
                     : "bg-slate-900 text-amber-400 hover:bg-slate-800"
                 }`}
               >
-                LOGIN ERROR ({loginErrorCount})
+                NOT EXIST ({notExistCount})
               </button>
               <button
                 onClick={() => setActiveTab("HAS_OTP")}
@@ -1218,19 +1318,19 @@ export default function Home() {
                                 LIVE
                               </span>
                             )}
-                            {acc.status === "DEAD" && (
+                            {acc.status === "SUSPENDED" && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2.5 py-0.5 text-[11px] font-bold text-purple-400 border border-purple-500/20">
+                                SUSPENDED
+                              </span>
+                            )}
+                            {acc.status === "ERROR" && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2.5 py-0.5 text-[11px] font-bold text-rose-400 border border-rose-500/20">
-                                DEAD
+                                ERROR
                               </span>
                             )}
                             {acc.status === "NOT_EXIST" && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-2.5 py-0.5 text-[11px] font-bold text-slate-300 border border-slate-700">
-                                NOT EXIST
-                              </span>
-                            )}
-                            {acc.status === "LOGIN_ERROR" && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-bold text-amber-400 border border-amber-500/20">
-                                LOGIN ERROR
+                                NOT EXIST
                               </span>
                             )}
                             {acc.status === "idle" && (

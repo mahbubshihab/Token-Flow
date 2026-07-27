@@ -169,9 +169,10 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedRawItem, setSelectedRawItem] = useState<AccountItem | null>(null);
-  const concurrency = 10; // Fixed 10 parallel threads
+  const [concurrency, setConcurrency] = useState<number>(25); // Default 25 parallel threads (Ultra Speed)
   const [expandedAccountIds, setExpandedAccountIds] = useState<Record<string, boolean>>({});
   const shouldStopRef = useRef<boolean>(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Custom UI Alert Modal State
   const [customAlert, setCustomAlert] = useState<CustomAlertState>({
@@ -256,6 +257,10 @@ export default function Home() {
 
   const stopProcessing = () => {
     shouldStopRef.current = true;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setIsProcessing(false);
   };
 
   // Toggle single account expand/collapse for viewing all inbox messages
@@ -382,7 +387,7 @@ export default function Home() {
   };
 
   // Check single account against API
-  const checkSingleAccount = async (account: AccountItem): Promise<AccountItem> => {
+  const checkSingleAccount = async (account: AccountItem, signal?: AbortSignal): Promise<AccountItem> => {
     try {
       const proxyUrl = process.env.NEXT_PUBLIC_PROXY_URL || "https://token-flow-proxy.vercel.app/api/get_messages_oauth2";
       let res: Response;
@@ -399,8 +404,10 @@ export default function Home() {
             refresh_token: account.refresh_token,
             client_id: account.client_id,
           }),
+          signal,
         });
-      } catch (e) {
+      } catch (e: any) {
+        if (e.name === 'AbortError') throw e;
         res = await fetch("https://tools.dongvanfb.net/api/get_messages_oauth2", {
           method: "POST",
           headers: { 
@@ -414,6 +421,7 @@ export default function Home() {
             refresh_token: account.refresh_token,
             client_id: account.client_id,
           }),
+          signal,
         });
       }
 
@@ -465,6 +473,14 @@ export default function Home() {
       };
 
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return {
+          ...account,
+          status: "idle",
+          statusMessage: "Stopped",
+          rawResponseContent: "Stopped by user",
+        };
+      }
       return {
         ...account,
         status: "LOGIN_ERROR",
@@ -483,6 +499,7 @@ export default function Home() {
     }
 
     shouldStopRef.current = false;
+    abortControllerRef.current = new AbortController();
     setAccounts(parsed);
     setIsProcessing(true);
 
@@ -504,12 +521,12 @@ export default function Home() {
       setAccounts([...updatedAccounts]);
 
       const results = await Promise.all(
-        batchIndices.map((idx) => checkSingleAccount(updatedAccounts[idx]))
+        batchIndices.map((idx) => checkSingleAccount(updatedAccounts[idx], abortControllerRef.current?.signal))
       );
 
       if (shouldStopRef.current) {
         batchIndices.forEach((idx, k) => {
-          updatedAccounts[idx] = results[k];
+          if (results[k]) updatedAccounts[idx] = results[k];
         });
         setAccounts([...updatedAccounts]);
         break;
@@ -913,11 +930,28 @@ export default function Home() {
                   )}
                 </button>
 
+                {/* Speed Concurrency Selector */}
+                <div className="flex items-center gap-1.5 rounded-xl bg-slate-900/80 border border-white/10 px-3 py-2 text-xs text-slate-300 shadow-inner">
+                  <Zap className="h-3.5 w-3.5 text-amber-400" />
+                  <span className="text-[11px] font-mono text-slate-400">Speed:</span>
+                  <select
+                    value={concurrency}
+                    onChange={(e) => setConcurrency(Number(e.target.value))}
+                    disabled={isProcessing}
+                    className="bg-transparent text-xs font-semibold text-emerald-400 focus:outline-none cursor-pointer"
+                  >
+                    <option value={10} className="bg-slate-900 text-slate-200">10 Threads (Normal)</option>
+                    <option value={25} className="bg-slate-900 text-slate-200">25 Threads (Fast ⚡)</option>
+                    <option value={35} className="bg-slate-900 text-slate-200">35 Threads (Ultra 🚀)</option>
+                    <option value={50} className="bg-slate-900 text-slate-200">50 Threads (Turbo 🔥)</option>
+                  </select>
+                </div>
+
                 {isProcessing && (
                   <button
                     onClick={stopProcessing}
-                    className="flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-rose-500 shadow-lg shadow-rose-600/30 border border-rose-500/30 transition-all cursor-pointer animate-in fade-in duration-200"
-                    title="Stop checking accounts"
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-rose-600/90 hover:bg-rose-500 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-lg shadow-rose-600/30 border border-rose-400/40 transition-all cursor-pointer active:scale-95 animate-pulse"
+                    title="Instantly stop checking accounts"
                   >
                     <Square className="h-3.5 w-3.5 fill-white" />
                     <span>Stop Check</span>

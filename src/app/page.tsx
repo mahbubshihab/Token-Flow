@@ -384,7 +384,7 @@ export default function Home() {
   // Check single account against API
   const checkSingleAccount = async (account: AccountItem): Promise<AccountItem> => {
     try {
-      const proxyUrl = process.env.NEXT_PUBLIC_PROXY_URL || "https://tokenflow-proxy.vercel.app/api/get_messages_oauth2";
+      const proxyUrl = process.env.NEXT_PUBLIC_PROXY_URL || "https://token-flow-proxy.vercel.app/api/get_messages_oauth2";
       let res: Response;
       try {
         res = await fetch(proxyUrl, {

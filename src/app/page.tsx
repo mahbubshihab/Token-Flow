@@ -526,11 +526,30 @@ export default function Home() {
         ? mailData
         : [];
 
-      // Hoist Amazon-related messages to the VERY TOP of the list
+      // Filter and sort Amazon-related messages
       const amazonMsgs = rawMessagesList.filter((m) => isAmazonMessage(m));
       const otherMsgs = rawMessagesList.filter((m) => !isAmazonMessage(m));
-      const messagesList = [...amazonMsgs, ...otherMsgs];
 
+      // Sort Amazon messages: Suspension Amazon mails FIRST, then OTP Amazon mails
+      if (amazonMsgs.length > 0) {
+        amazonMsgs.sort((a, b) => {
+          const aSusp = isSuspendedMessage((a.subject || "") + " " + (a.message || ""), a.from || "");
+          const bSusp = isSuspendedMessage((b.subject || "") + " " + (b.message || ""), b.from || "");
+          if (aSusp && !bSusp) return -1;
+          if (!aSusp && bSusp) return 1;
+
+          const aCode = Boolean(a.code || extractOtpCode(a.subject || a.message || ""));
+          const bCode = Boolean(b.code || extractOtpCode(b.subject || b.message || ""));
+          if (aCode && !bCode) return -1;
+          if (!aCode && bCode) return 1;
+
+          return 0;
+        });
+      }
+
+      const messagesList = amazonMsgs.length > 0 ? [...amazonMsgs, ...otherMsgs] : rawMessagesList;
+
+      // Extract OTP from Amazon messages first
       let topOtpCode = mailData?.code;
       if (!topOtpCode && messagesList.length > 0) {
         for (const msg of messagesList) {
@@ -546,46 +565,44 @@ export default function Home() {
         }
       }
 
-      // Preserve EXACT raw content string from Amazon message if available
-      const exactApiContent =
-        (messagesList.length > 0 ? messagesList[0].subject || messagesList[0].message : undefined) ||
-        mailData?.content ||
-        mailData?.error ||
-        mailData?.message ||
-        JSON.stringify(mailData);
-
       // Check if IMAP connection succeeded (status: true OR messages list present OR code present)
       const isSuccessResponse = mailData?.status === true || messagesList.length > 0 || Boolean(mailData?.code);
 
       if (isSuccessResponse) {
-        // Check if ANY inbox message or content indicates account suspension/hold
-        let hasSuspension = isSuspendedMessage(mailData?.content || "");
-        if (!hasSuspension && messagesList.length > 0) {
-          for (const msg of messagesList) {
-            if (isSuspendedMessage((msg.subject || "") + " " + (msg.message || ""), msg.from || "")) {
-              hasSuspension = true;
-              break;
-            }
+        // Check if ANY Amazon message indicates account suspension/hold
+        let suspendedAmazonMsg = amazonMsgs.find((m) =>
+          isSuspendedMessage((m.subject || "") + " " + (m.message || ""), m.from || "")
+        );
+
+        if (!suspendedAmazonMsg) {
+          if (isSuspendedMessage(mailData?.content || "")) {
+            suspendedAmazonMsg = { subject: mailData.content };
           }
         }
 
-        if (hasSuspension) {
+        if (suspendedAmazonMsg) {
           return {
             ...account,
             status: "SUSPENDED",
             statusMessage: "Amazon Account Suspended",
-            rawResponseContent: exactApiContent,
+            rawResponseContent: suspendedAmazonMsg.subject || suspendedAmazonMsg.message || "Amazon Account Suspended",
             messagesList,
             otpCode: topOtpCode,
             rawResponse: mailData,
           };
         }
 
+        // If Amazon messages exist, display top Amazon message subject
+        const primaryContent =
+          (messagesList.length > 0 ? messagesList[0].subject || messagesList[0].message : undefined) ||
+          mailData?.content ||
+          "Account Live";
+
         return {
           ...account,
           status: "LIVE",
           statusMessage: "Account Live",
-          rawResponseContent: exactApiContent,
+          rawResponseContent: primaryContent,
           messagesList,
           otpCode: topOtpCode,
           rawResponse: mailData,
@@ -598,7 +615,7 @@ export default function Home() {
         ...account,
         status: cat.status,
         statusMessage: cat.message,
-        rawResponseContent: exactApiContent,
+        rawResponseContent: mailData?.content || mailData?.error || mailData?.message || cat.message,
         rawResponse: mailData,
       };
 

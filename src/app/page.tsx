@@ -427,40 +427,25 @@ export default function Home() {
       return { status: "ERROR", message: "Lỗi kết nối!" };
     }
 
-    const strRes = JSON.stringify(resData).toLowerCase();
+    // Explicit Status Check from Dongvanfb API
+    if (resData.status === true || Array.isArray(resData.messages) || resData.code) {
+      return { status: "LIVE", message: resData.content || "Account Live & Inbox Active" };
+    }
 
-    // ERROR: Connection Fail / Timeout / Proxy Fail / 500
+    const errStr = (resData.content || resData.error || resData.message || JSON.stringify(resData)).toLowerCase();
+
+    // Check specific error messages
     if (
-      strRes.includes("lỗi kết nối") ||
-      strRes.includes("proxy connection error") ||
-      strRes.includes("timeout") ||
-      strRes.includes("err_failed") ||
-      strRes.includes("500") ||
-      strRes.includes("server error")
+      errStr.includes("lỗi kết nối") ||
+      errStr.includes("proxy connection error") ||
+      errStr.includes("timeout") ||
+      errStr.includes("err_failed") ||
+      errStr.includes("server error")
     ) {
       return { status: "ERROR", message: resData.content || resData.error || "Lỗi kết nối!" };
     }
 
-    // NOT_EXIST: Password Incorrect / IMAP Fail / Account Not Exist
-    if (
-      strRes.includes("not exist") ||
-      strRes.includes("not found") ||
-      strRes.includes("no account") ||
-      strRes.includes("invalid") ||
-      strRes.includes("expired") ||
-      strRes.includes("password") ||
-      strRes.includes("imap connection failed") ||
-      resData.status === false
-    ) {
-      return { status: "NOT_EXIST", message: resData.content || resData.error || "Account Not Exist / Login Fail" };
-    }
-
-    // Default LIVE if IMAP active
-    if (resData.status === true || Array.isArray(resData.messages) || (resData.messages && resData.messages.length > 0) || resData.code) {
-      return { status: "LIVE", message: resData.content || "Account Live & Inbox Active" };
-    }
-
-    return { status: "ERROR", message: resData.content || "Lỗi kết nối!" };
+    return { status: "NOT_EXIST", message: resData.content || resData.error || "Account Not Exist / Login Fail" };
   };
 
   // Check single account against API
@@ -503,7 +488,6 @@ export default function Home() {
       }
 
       const mailData = await res.json();
-      const cat = categorizeResponse(mailData);
 
       // Extract messages array & preserve exact raw API response text content
       const messagesList: MailMessageItem[] = Array.isArray(mailData?.messages)
@@ -527,48 +511,53 @@ export default function Home() {
         }
       }
 
-      // Check if ANY inbox message or content indicates account suspension/hold
-      let hasSuspension = isSuspendedMessage(mailData?.content || "");
-      if (!hasSuspension && messagesList.length > 0) {
-        for (const msg of messagesList) {
-          if (isSuspendedMessage((msg.subject || "") + " " + (msg.message || ""), msg.from || "")) {
-            hasSuspension = true;
-            break;
+      // Check if IMAP connection succeeded (status: true OR messages list present OR code present)
+      const isSuccessResponse = mailData?.status === true || messagesList.length > 0 || Boolean(mailData?.code);
+
+      if (isSuccessResponse) {
+        // Check if ANY inbox message or content indicates account suspension/hold
+        let hasSuspension = isSuspendedMessage(mailData?.content || "");
+        if (!hasSuspension && messagesList.length > 0) {
+          for (const msg of messagesList) {
+            if (isSuspendedMessage((msg.subject || "") + " " + (msg.message || ""), msg.from || "")) {
+              hasSuspension = true;
+              break;
+            }
           }
         }
-      }
 
-      if (hasSuspension) {
+        const rawText = mailData?.content || (messagesList.length > 0 ? messagesList[0].subject : "Account Live");
+
+        if (hasSuspension) {
+          return {
+            ...account,
+            status: "SUSPENDED",
+            statusMessage: "Amazon Account Suspended / On Hold",
+            rawResponseContent: rawText,
+            messagesList,
+            otpCode: topOtpCode,
+            rawResponse: mailData,
+          };
+        }
+
         return {
           ...account,
-          status: "SUSPENDED",
-          statusMessage: "Amazon Account Suspended / On Hold",
-          rawResponseContent: mailData?.content || (messagesList.length > 0 ? messagesList[0].subject : "Account Suspended"),
-          messagesList: messagesList,
+          status: "LIVE",
+          statusMessage: "Account Live & Inbox Active",
+          rawResponseContent: rawText,
+          messagesList,
           otpCode: topOtpCode,
           rawResponse: mailData,
         };
       }
 
-      if (!res.ok || cat.status === "ERROR" || cat.status === "NOT_EXIST") {
-        return {
-          ...account,
-          status: cat.status,
-          statusMessage: cat.message,
-          rawResponseContent: mailData?.content || mailData?.error || mailData?.message || cat.message,
-          rawResponse: mailData,
-        };
-      }
-
-      const rawText = mailData?.content || (messagesList.length > 0 ? messagesList[0].subject : JSON.stringify(mailData));
-
+      // If IMAP connection failed or returned status: false
+      const cat = categorizeResponse(mailData);
       return {
         ...account,
         status: cat.status,
         statusMessage: cat.message,
-        rawResponseContent: rawText,
-        messagesList: messagesList,
-        otpCode: topOtpCode,
+        rawResponseContent: mailData?.content || mailData?.error || mailData?.message || cat.message,
         rawResponse: mailData,
       };
 

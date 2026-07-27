@@ -511,12 +511,12 @@ export default function Home() {
         }
       }
 
-      // Preserve EXACT raw content string from API response
+      // Preserve EXACT raw content string from API response (prioritize primary inbox message subject/content over generic status)
       const exactApiContent =
+        (messagesList.length > 0 ? messagesList[0].subject || messagesList[0].message : undefined) ||
         mailData?.content ||
         mailData?.error ||
         mailData?.message ||
-        (messagesList.length > 0 ? messagesList[0].subject : undefined) ||
         JSON.stringify(mailData);
 
       // Check if IMAP connection succeeded (status: true OR messages list present OR code present)
@@ -1344,10 +1344,10 @@ export default function Home() {
                           </td>
 
                           {/* Exact Raw Response Content */}
-                          <td className="px-6 py-3.5 max-w-[320px]">
+                          <td className="px-6 py-3.5 max-w-[400px]">
                             <div className="flex items-center justify-between gap-2">
-                              <p className="line-clamp-2 text-slate-200 leading-relaxed font-sans">
-                                {acc.rawResponseContent || firstMsg?.subject || acc.statusMessage || "-"}
+                              <p className="text-slate-200 leading-relaxed font-sans break-words text-xs">
+                                {firstMsg?.subject || acc.rawResponseContent || acc.statusMessage || "-"}
                               </p>
                               {hasMultipleMessages && !isExpanded && (
                                 <button

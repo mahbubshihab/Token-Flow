@@ -511,6 +511,14 @@ export default function Home() {
         }
       }
 
+      // Preserve EXACT raw content string from API response
+      const exactApiContent =
+        mailData?.content ||
+        mailData?.error ||
+        mailData?.message ||
+        (messagesList.length > 0 ? messagesList[0].subject : undefined) ||
+        JSON.stringify(mailData);
+
       // Check if IMAP connection succeeded (status: true OR messages list present OR code present)
       const isSuccessResponse = mailData?.status === true || messagesList.length > 0 || Boolean(mailData?.code);
 
@@ -526,14 +534,12 @@ export default function Home() {
           }
         }
 
-        const rawText = mailData?.content || (messagesList.length > 0 ? messagesList[0].subject : "Account Live");
-
         if (hasSuspension) {
           return {
             ...account,
             status: "SUSPENDED",
-            statusMessage: "Amazon Account Suspended / On Hold",
-            rawResponseContent: rawText,
+            statusMessage: "Amazon Account Suspended",
+            rawResponseContent: exactApiContent,
             messagesList,
             otpCode: topOtpCode,
             rawResponse: mailData,
@@ -543,8 +549,8 @@ export default function Home() {
         return {
           ...account,
           status: "LIVE",
-          statusMessage: "Account Live & Inbox Active",
-          rawResponseContent: rawText,
+          statusMessage: "Account Live",
+          rawResponseContent: exactApiContent,
           messagesList,
           otpCode: topOtpCode,
           rawResponse: mailData,
@@ -557,7 +563,7 @@ export default function Home() {
         ...account,
         status: cat.status,
         statusMessage: cat.message,
-        rawResponseContent: mailData?.content || mailData?.error || mailData?.message || cat.message,
+        rawResponseContent: exactApiContent,
         rawResponse: mailData,
       };
 
@@ -1341,7 +1347,7 @@ export default function Home() {
                           <td className="px-6 py-3.5 max-w-[320px]">
                             <div className="flex items-center justify-between gap-2">
                               <p className="line-clamp-2 text-slate-200 leading-relaxed font-sans">
-                                {firstMsg?.subject || acc.rawResponseContent || acc.statusMessage || "-"}
+                                {acc.rawResponseContent || firstMsg?.subject || acc.statusMessage || "-"}
                               </p>
                               {hasMultipleMessages && !isExpanded && (
                                 <button

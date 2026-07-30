@@ -793,22 +793,28 @@ export default function Home() {
       return;
     }
 
-    // Export Excel preserving EXACT original sheet layout (Columns A, B, C, D, E... with NO extra columns)
+    // Export Excel preserving EXACT original sheet layout (Columns A, B, C, D, E only)
     const exportRows: any[][] = [];
 
-    // Header row (exact original header)
+    // Header row (if present in original uploaded sheet)
     if (uploadedExcelHeader && uploadedExcelHeader.length > 0) {
-      exportRows.push([...uploadedExcelHeader]);
+      exportRows.push(uploadedExcelHeader.slice(0, 5));
     }
 
     for (const acc of exportList) {
       if (acc.originalRow && acc.originalRow.length > 0) {
-        // Preserve exact original row cells without any extra columns
-        exportRows.push([...acc.originalRow]);
+        // Preserve exact original row cells up to Column E (Columns A, B, C, D, E)
+        exportRows.push(acc.originalRow.slice(0, 5));
       } else {
-        // Fallback row for pasted lines (exact raw input line)
+        // Fallback row for pasted text lines (Columns A, B, C, D, E)
         const rawStr = acc.rawInputLine || `${acc.email}|${acc.pass}|${acc.refresh_token}|${acc.client_id}`;
-        exportRows.push([rawStr]);
+        exportRows.push([
+          acc.email,
+          acc.email,
+          acc.pass,
+          rawStr,
+          acc.refresh_token || acc.client_id || ""
+        ]);
       }
     }
 

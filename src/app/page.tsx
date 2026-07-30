@@ -702,18 +702,32 @@ export default function Home() {
 
   // Start batch checking
   const startProcessing = async () => {
-    const parsed = parseInputLines();
-    if (parsed.length === 0) {
+    if (!inputText.trim()) {
+      showAlert("Please paste account lines or upload an Excel file.", "No Input Data", "warning");
+      return;
+    }
+
+    const lines = inputText.split("\n").map((l) => l.trim()).filter(Boolean);
+    let targetAccounts: AccountItem[] = [];
+
+    // If accounts were already loaded from an uploaded Excel file, preserve their original rows!
+    if (accounts.length > 0 && accounts.length === lines.length && accounts.some((a) => Boolean(a.originalRow))) {
+      targetAccounts = accounts.map((a) => ({ ...a, status: "idle" as AccountStatus }));
+    } else {
+      targetAccounts = parseInputLines();
+    }
+
+    if (targetAccounts.length === 0) {
       showAlert("Please paste account lines or upload an Excel file.", "No Input Data", "warning");
       return;
     }
 
     shouldStopRef.current = false;
     abortControllerRef.current = new AbortController();
-    setAccounts(parsed);
+    setAccounts(targetAccounts);
     setIsProcessing(true);
 
-    const updatedAccounts = [...parsed];
+    const updatedAccounts = [...targetAccounts];
 
     for (let i = 0; i < updatedAccounts.length; i += concurrency) {
       if (shouldStopRef.current) {

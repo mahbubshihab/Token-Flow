@@ -793,41 +793,22 @@ export default function Home() {
       return;
     }
 
-    // Export Excel preserving EXACT original sheet layout (Columns A, B, C, D, E...)
+    // Export Excel preserving EXACT original sheet layout (Columns A, B, C, D, E... with NO extra columns)
     const exportRows: any[][] = [];
 
-    // Header row
+    // Header row (exact original header)
     if (uploadedExcelHeader && uploadedExcelHeader.length > 0) {
-      exportRows.push([
-        ...uploadedExcelHeader,
-        "STATUS_CATEGORY",
-        "RESPONSE_CONTENT",
-        "OTP_CODE"
-      ]);
+      exportRows.push([...uploadedExcelHeader]);
     }
 
     for (const acc of exportList) {
       if (acc.originalRow && acc.originalRow.length > 0) {
-        // Preserve exact original row cells (Columns A, B, C, D, E...)
-        exportRows.push([
-          ...acc.originalRow,
-          acc.status,
-          acc.rawResponseContent || acc.statusMessage || "-",
-          acc.otpCode || "-"
-        ]);
+        // Preserve exact original row cells without any extra columns
+        exportRows.push([...acc.originalRow]);
       } else {
-        // Fallback row for pasted lines
+        // Fallback row for pasted lines (exact raw input line)
         const rawStr = acc.rawInputLine || `${acc.email}|${acc.pass}|${acc.refresh_token}|${acc.client_id}`;
-        exportRows.push([
-          acc.email,
-          acc.email,
-          acc.pass,
-          rawStr,
-          acc.refresh_token || acc.client_id,
-          acc.status,
-          acc.rawResponseContent || acc.statusMessage || "-",
-          acc.otpCode || "-"
-        ]);
+        exportRows.push([rawStr]);
       }
     }
 

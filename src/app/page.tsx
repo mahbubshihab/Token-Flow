@@ -50,6 +50,8 @@ interface AccountItem {
   refresh_token: string;
   client_id: string;
   status: AccountStatus;
+  rawInputLine?: string;        // Exact raw pipe line: email|pass|refresh_token|client_id
+  originalRow?: any[];           // Exact original row array from uploaded Excel sheet (Col A, Col B, Col C, Col D, Col E...)
   sender?: string;
   time?: string;
   rawResponseContent?: string;
@@ -171,6 +173,7 @@ export default function Home() {
   const [selectedRawItem, setSelectedRawItem] = useState<AccountItem | null>(null);
   const [concurrency, setConcurrency] = useState<number>(25); // Default 25 parallel threads (Ultra Speed)
   const [expandedAccountIds, setExpandedAccountIds] = useState<Record<string, boolean>>({});
+  const [uploadedExcelHeader, setUploadedExcelHeader] = useState<any[] | null>(null);
   const shouldStopRef = useRef<boolean>(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -271,7 +274,7 @@ export default function Home() {
     }));
   };
 
-  // Handle Excel File Upload (Column D Auto Parsing - Supports 10,000+ Rows)
+  // Handle Excel File Upload (Preserves exact original columns A, B, C, D, E...)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -285,18 +288,76 @@ export default function Home() {
         const ws = wb.Sheets[wsname];
         const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
+        if (!data || data.length === 0) {
+          showAlert("The uploaded Excel file is empty.", "File Error", "warning");
+          return;
+        }
+
+        // Check if first row is a header row
+        let startIndex = 0;
+        const firstRow = data[0];
+        const isHeader =
+          firstRow &&
+          firstRow.some(
+            (cell) =>
+              typeof cell === "string" &&
+              (cell.toLowerCase().includes("email") ||
+                cell.toLowerCase().includes("name") ||
+                cell.toLowerCase().includes("string") ||
+                cell.toLowerCase().includes("stt"))
+          );
+
+        if (isHeader) {
+          setUploadedExcelHeader(firstRow);
+          startIndex = 1;
+        } else {
+          setUploadedExcelHeader(null);
+        }
+
+        const parsedAccounts: AccountItem[] = [];
         const colDLines: string[] = [];
-        for (let i = 0; i < data.length; i++) {
-          const cellVal = data[i][3]; // Column D
-          if (cellVal && typeof cellVal === "string" && cellVal.includes("|")) {
-            colDLines.push(cellVal.trim());
+        const now = Date.now();
+
+        for (let i = startIndex; i < data.length; i++) {
+          const row = data[i];
+          if (!row || row.length === 0) continue;
+
+          // Find pipe-separated string in cells (Column D / index 3 first, then any cell)
+          let pipeStr = "";
+          for (let colIdx = 0; colIdx < row.length; colIdx++) {
+            const cellVal = row[colIdx];
+            if (cellVal && typeof cellVal === "string" && cellVal.includes("|")) {
+              pipeStr = cellVal.trim();
+              break;
+            }
+          }
+
+          if (pipeStr) {
+            colDLines.push(pipeStr);
+            const parts = pipeStr.split("|");
+            parsedAccounts.push({
+              id: `acc-xl-${i}-${now}`,
+              email: parts[0]?.trim() || `row-${i}`,
+              pass: parts[1]?.trim() || "",
+              refresh_token: parts[2]?.trim() || "",
+              client_id: parts[3]?.trim() || "",
+              status: "idle",
+              rawInputLine: pipeStr,
+              originalRow: row,
+            });
           }
         }
 
-        if (colDLines.length > 0) {
+        if (parsedAccounts.length > 0) {
           setInputText(colDLines.join("\n"));
+          setAccounts(parsedAccounts);
+          showAlert(
+            `Successfully loaded ${parsedAccounts.length} accounts from Excel sheet with original structure!`,
+            "File Loaded",
+            "info"
+          );
         } else {
-          showAlert("No pipe-separated account lines found in Column D.", "File Parsing Error", "warning");
+          showAlert("No pipe-separated account lines found in the Excel file.", "File Parsing Error", "warning");
         }
       } catch (err: any) {
         showAlert("Error parsing Excel file: " + err.message, "File Error", "error");
@@ -323,6 +384,8 @@ export default function Home() {
         refresh_token: parts[2]?.trim() || "",
         client_id: parts[3]?.trim() || "",
         status: "idle",
+        rawInputLine: trimmed,
+        originalRow: [parts[0]?.trim(), parts[0]?.trim(), parts[1]?.trim(), trimmed, parts[2]?.trim() || parts[3]?.trim()],
       });
     }
 
@@ -696,8 +759,8 @@ export default function Home() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Dedicated Excel Download for Specific Category
-  const exportCategoryToExcel = (category: AccountStatus | "ALL" | "HAS_OTP") => {
+  // Dedicated Excel & File Download preserving EXACT original input format
+  const exportCategoryToExcel = (category: AccountStatus | "ALL" | "HAS_OTP", isRawTxtFormat = false) => {
     let exportList = accounts;
     if (category !== "ALL") {
       if (category === "HAS_OTP") {
@@ -712,21 +775,66 @@ export default function Home() {
       return;
     }
 
-    const excelRows = exportList.map((acc, idx) => ({
-      STT: idx + 1,
-      Email: acc.email,
-      Password: acc.pass,
-      Status_Category: acc.status,
-      Response_Content: acc.rawResponseContent || acc.statusMessage || "-",
-      Total_Inbox_Messages: acc.messagesList ? acc.messagesList.length : 0,
-      OTP_Code: acc.otpCode || "-",
-      Raw_Account_String: `${acc.email}|${acc.pass}|${acc.refresh_token}|${acc.client_id}`
-    }));
+    if (isRawTxtFormat) {
+      // Export plain text file with exact raw account lines (email|pass|refresh_token|client_id)
+      const rawTxtContent = exportList
+        .map((a) => a.rawInputLine || `${a.email}|${a.pass}|${a.refresh_token}|${a.client_id}`)
+        .join("\n");
+      
+      const blob = new Blob([rawTxtContent], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `TokenFlow_${category}_RawFormat_${Date.now()}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return;
+    }
 
-    const worksheet = XLSX.utils.json_to_sheet(excelRows);
+    // Export Excel preserving EXACT original sheet layout (Columns A, B, C, D, E...)
+    const exportRows: any[][] = [];
+
+    // Header row
+    if (uploadedExcelHeader && uploadedExcelHeader.length > 0) {
+      exportRows.push([
+        ...uploadedExcelHeader,
+        "STATUS_CATEGORY",
+        "RESPONSE_CONTENT",
+        "OTP_CODE"
+      ]);
+    }
+
+    for (const acc of exportList) {
+      if (acc.originalRow && acc.originalRow.length > 0) {
+        // Preserve exact original row cells (Columns A, B, C, D, E...)
+        exportRows.push([
+          ...acc.originalRow,
+          acc.status,
+          acc.rawResponseContent || acc.statusMessage || "-",
+          acc.otpCode || "-"
+        ]);
+      } else {
+        // Fallback row for pasted lines
+        const rawStr = acc.rawInputLine || `${acc.email}|${acc.pass}|${acc.refresh_token}|${acc.client_id}`;
+        exportRows.push([
+          acc.email,
+          acc.email,
+          acc.pass,
+          rawStr,
+          acc.refresh_token || acc.client_id,
+          acc.status,
+          acc.rawResponseContent || acc.statusMessage || "-",
+          acc.otpCode || "-"
+        ]);
+      }
+    }
+
+    const worksheet = XLSX.utils.aoa_to_sheet(exportRows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, `${category}_Accounts`);
-    XLSX.writeFile(workbook, `TokenFlow_${category}_Results_${Date.now()}.xlsx`);
+    XLSX.writeFile(workbook, `TokenFlow_${category}_ExactFormat_${Date.now()}.xlsx`);
   };
 
   // Stats calculation
